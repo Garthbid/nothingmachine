@@ -9,18 +9,14 @@ import { ResizablePanels } from '@/components/layout/ResizablePanels'
 import { MemoryExplorer } from '@/components/memory/MemoryExplorer'
 import { TerminalEditor } from '@/components/editor/TerminalEditor'
 import { ConfigManifest } from '@/components/editor/ConfigManifest'
-import { BlankSlate } from '@/components/marketplace/BlankSlate'
-import { TemplateMarketplace } from '@/components/marketplace/TemplateMarketplace'
-import { CheckoutDialog } from '@/components/marketplace/CheckoutDialog'
 import { MobileLayout } from '@/components/mobile/MobileLayout'
 import { FileText } from 'lucide-react'
 
 export default function Home() {
-  const { injectFile, hasTemplate, showMarketplace } = useStore()
+  const { injectFile } = useStore()
   const [activeFile, setActiveFile] = useState<MemoryFile | null>(null)
   const [mounted, setMounted] = useState(false)
 
-  // Only render on client to avoid hydration mismatch
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -42,7 +38,6 @@ export default function Home() {
     }
   }
 
-  // Loading state
   if (!mounted) {
     return (
       <div className="h-screen flex flex-col bg-[#0a0a0a] text-white">
@@ -50,37 +45,10 @@ export default function Home() {
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-pulse text-white/40">Loading...</div>
         </div>
-              </div>
-    )
-  }
-
-  // Full page marketplace
-  if (showMarketplace) {
-    return (
-      <div className="h-screen flex flex-col bg-[#0a0a0a] text-white">
-        <Header />
-        <div className="flex-1 overflow-hidden">
-          <TemplateMarketplace />
-        </div>
-        <CheckoutDialog />
       </div>
     )
   }
 
-  // Blank slate - no template purchased yet
-  if (!hasTemplate) {
-    return (
-      <div className="h-screen flex flex-col bg-[#0a0a0a] text-white">
-        <Header />
-        <div className="flex-1">
-          <BlankSlate />
-        </div>
-                <CheckoutDialog />
-      </div>
-    )
-  }
-
-  // Full app with template
   return (
     <>
       {/* Mobile Layout */}
@@ -113,8 +81,6 @@ export default function Home() {
             )}
           </DragOverlay>
         </DndContext>
-
-        <CheckoutDialog />
       </div>
     </>
   )

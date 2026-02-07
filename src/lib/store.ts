@@ -626,12 +626,12 @@ interface NothingMachineStore {
 export const useStore = create<NothingMachineStore>()(
   persist(
     (set, get) => ({
-      // Initial state - blank slate by default
-      hasTemplate: false,
-      templateId: null,
+      // Initial state
+      hasTemplate: true,
+      templateId: 'richard',
       showMarketplace: false,
       showCheckout: false,
-      files: [],
+      files: defaultFiles,
       selectedFile: null,
       injectedFileIds: [],
       expandedFolders: ['/soul', '/memory', '/knowledge', '/reference', '/essays', '/memos', '/prompts', '/whitepapers', '/guides', '/content'],
