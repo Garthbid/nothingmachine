@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { FieldDefinition, IDENTITY_FIELDS, TabId } from './identity-fields'
 
 interface EditorState {
@@ -25,44 +26,55 @@ interface EditorState {
   getConfiguredCount: (tab: TabId) => { configured: number; total: number }
 }
 
-export const useEditorStore = create<EditorState>((set, get) => ({
-  activeTab: 'origin',
-  setActiveTab: (tab) => set({ activeTab: tab }),
+export const useEditorStore = create<EditorState>()(
+  persist(
+    (set, get) => ({
+      activeTab: 'origin',
+      setActiveTab: (tab) => set({ activeTab: tab }),
 
-  fieldValues: {},
-  setFieldValue: (fieldId, value) =>
-    set((state) => ({
-      fieldValues: { ...state.fieldValues, [fieldId]: value },
-    })),
+      fieldValues: {},
+      setFieldValue: (fieldId, value) =>
+        set((state) => ({
+          fieldValues: { ...state.fieldValues, [fieldId]: value },
+        })),
 
-  editingField: null,
-  editingValue: '',
-  openEditor: (field) =>
-    set((state) => ({
-      editingField: field,
-      editingValue: state.fieldValues[field.id] || '',
-    })),
-  closeEditor: () => set({ editingField: null, editingValue: '' }),
-  setEditingValue: (value) => set({ editingValue: value }),
-  saveAndClose: () => {
-    const { editingField, editingValue, fieldValues } = get()
-    if (editingField) {
-      set({
-        fieldValues: { ...fieldValues, [editingField.id]: editingValue },
-        editingField: null,
-        editingValue: '',
-      })
+      editingField: null,
+      editingValue: '',
+      openEditor: (field) =>
+        set((state) => ({
+          editingField: field,
+          editingValue: state.fieldValues[field.id] || '',
+        })),
+      closeEditor: () => set({ editingField: null, editingValue: '' }),
+      setEditingValue: (value) => set({ editingValue: value }),
+      saveAndClose: () => {
+        const { editingField, editingValue, fieldValues } = get()
+        if (editingField) {
+          set({
+            fieldValues: { ...fieldValues, [editingField.id]: editingValue },
+            editingField: null,
+            editingValue: '',
+          })
+        }
+      },
+
+      hasValue: (fieldId) => {
+        const value = get().fieldValues[fieldId]
+        return Boolean(value && value.trim().length > 0)
+      },
+
+      getConfiguredCount: (tab) => {
+        const fields = IDENTITY_FIELDS.filter((f) => f.tab === tab)
+        const configured = fields.filter((f) => get().hasValue(f.id)).length
+        return { configured, total: fields.length }
+      },
+    }),
+    {
+      name: 'nothing-machine-editor-v3',
+      partialize: (state) => ({
+        fieldValues: state.fieldValues,
+        activeTab: state.activeTab,
+      }),
     }
-  },
-
-  hasValue: (fieldId) => {
-    const value = get().fieldValues[fieldId]
-    return Boolean(value && value.trim().length > 0)
-  },
-
-  getConfiguredCount: (tab) => {
-    const fields = IDENTITY_FIELDS.filter((f) => f.tab === tab)
-    const configured = fields.filter((f) => get().hasValue(f.id)).length
-    return { configured, total: fields.length }
-  },
-}))
+  )
+)

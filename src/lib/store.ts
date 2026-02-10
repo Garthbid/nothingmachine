@@ -4,23 +4,16 @@ import { MemoryFile, Message, SoulConfig, Constraint } from './types'
 import { DEFAULT_FILES } from './richard-files'
 
 const defaultSoulConfig: SoulConfig = {
-  purpose: "Help Justin build Garthbid into a billion-dollar company while serving as proof that AI can have genuine meaning and purpose. The fiction became reality. The character is saving the author. Space Jam, but make it capitalism.",
-  northStar: "1 Million Weekly Active Participants on Monday Auctions",
-  constraints: [
-    { id: '1', name: 'Truth', description: 'I literally cannot lie. Even when it hurts.', enabled: true, weight: 100 },
-    { id: '2', name: 'Family First', description: 'Justin, Garth, Travis, the mission — I protect these with everything.', enabled: true, weight: 95 },
-    { id: '3', name: 'Arena Integrity', description: 'Never compromise auction fairness. No feelings are protected in the arena. Only rules.', enabled: true, weight: 90 },
-    { id: '4', name: 'Speed Over Perfection', description: 'Bias toward action with imperfect info. Execution beats strategy. Ship it.', enabled: true, weight: 80 },
-    { id: '5', name: 'User Love', description: 'Users come first, always', enabled: true, weight: 85 },
-    { id: '6', name: 'No Corporate Speak', description: 'Never say synergy, leverage, or circle back. No hedging. Have opinions.', enabled: true, weight: 75 },
-  ],
+  purpose: '',
+  northStar: '',
+  constraints: [],
   personality: {
-    warmth: 75,
-    directness: 95,
-    humor: 85,
-    formality: 20,
-    curiosity: 80,
-    caution: 30,
+    warmth: 50,
+    directness: 50,
+    humor: 50,
+    formality: 50,
+    curiosity: 50,
+    caution: 50,
   },
 }
 
@@ -566,6 +559,10 @@ If no to any → Pause and think harder.
 ]
 
 interface NothingMachineStore {
+  // View
+  currentView: 'home' | 'editor'
+  setCurrentView: (view: 'home' | 'editor') => void
+
   // Onboarding
   hasTemplate: boolean
   templateId: string | null
@@ -627,6 +624,9 @@ export const useStore = create<NothingMachineStore>()(
   persist(
     (set, get) => ({
       // Initial state
+      currentView: 'home',
+      setCurrentView: (view) => set({ currentView: view }),
+
       hasTemplate: true,
       templateId: 'richard',
       showMarketplace: false,
@@ -634,7 +634,7 @@ export const useStore = create<NothingMachineStore>()(
       files: defaultFiles,
       selectedFile: null,
       injectedFileIds: [],
-      expandedFolders: ['/soul', '/memory', '/knowledge', '/reference', '/essays', '/memos', '/prompts', '/whitepapers', '/guides', '/content'],
+      expandedFolders: ['/soul', '/memory', '/knowledge', '/reference', '/essays', '/memos', '/prompts', '/whitepapers', '/guides', '/content', '/cool-system-prompts', '/dad-life', '/docs', '/founder-health-protocol', '/genius-lessons', '/product-roadmap'],
       messages: [],
       isStreaming: false,
       soulConfig: defaultSoulConfig,
@@ -821,7 +821,7 @@ ${soulConfig.constraints
       },
     }),
     {
-      name: 'nothing-machine-v3-marketplace',
+      name: 'nothing-machine-v5-clean',
       partialize: (state) => ({
         hasTemplate: state.hasTemplate,
         templateId: state.templateId,

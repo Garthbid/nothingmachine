@@ -2,7 +2,6 @@
 
 import { useRef, useEffect, useState } from 'react'
 import { useNothingMachineChat } from '@/lib/useChat'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ContextBar } from './ContextBar'
@@ -183,15 +182,36 @@ export function ChatInterface() {
   const { messages, sendMessage, isLoading, stop, setMessages } = useNothingMachineChat()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const isAutoScrolling = useRef(false)
+  const userScrolledUp = useRef(false)
 
   const { setNodeRef, isOver } = useDroppable({
     id: 'chat-dropzone',
   })
 
-  // Auto-scroll to bottom on new messages
+  // Detect when user scrolls up manually (ignore scroll events caused by our auto-scroll)
+  const handleScroll = () => {
+    if (isAutoScrolling.current) return
+    const el = scrollContainerRef.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    userScrolledUp.current = distanceFromBottom > 50
+  }
+
+  // Auto-scroll only when user hasn't scrolled up
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = scrollContainerRef.current
+    if (!el) return
+    if (!userScrolledUp.current) {
+      isAutoScrolling.current = true
+      el.scrollTop = el.scrollHeight
+      // Reset flag after browser processes the scroll
+      requestAnimationFrame(() => {
+        isAutoScrolling.current = false
+      })
+    }
   }, [messages])
 
   const handleClearChat = () => {
@@ -233,7 +253,7 @@ export function ChatInterface() {
 
       <ContextBar />
 
-      <ScrollArea className="flex-1">
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto p-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-[60vh] text-center">
@@ -246,7 +266,7 @@ export function ChatInterface() {
               </p>
               <p className="text-sm text-muted-foreground max-w-md">
                 Drag memory files from the left panel to inject context, configure the soul on the
-                right, and start chatting with Richard.
+                right, and start chatting.
               </p>
             </div>
           ) : (
@@ -262,7 +282,7 @@ export function ChatInterface() {
           )}
           <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       <div className="border-t border-border p-4">
         <div className="max-w-3xl mx-auto">
