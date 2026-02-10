@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Menu, X, Search, MessageSquare, FolderOpen, Fingerprint, ChevronRight, Plus, Mic, Send, ArrowLeft, ChevronDown, Pencil, Check } from 'lucide-react'
+import { Menu, X, Search, MessageSquare, FolderOpen, Fingerprint, ChevronRight, Plus, Mic, Send, ArrowLeft, ChevronDown, Pencil, Check, StopCircle, Bot, User, Loader2, Copy } from 'lucide-react'
 import { useEditorStore } from '@/lib/editor-store'
 import { IDENTITY_FIELDS, TABS, FieldDefinition } from '@/lib/identity-fields'
 import { useStore } from '@/lib/store'
+import { useNothingMachineChat } from '@/lib/useChat'
 
 const AI_MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', provider: 'Anthropic' },
@@ -30,8 +31,10 @@ export function MobileLayout() {
   const [nameInputValue, setNameInputValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
   const { files, injectedFileIds, injectFile, removeInjectedFile } = useStore()
   const { activeTab, setActiveTab, fieldValues, hasValue, setFieldValue } = useEditorStore()
+  const { messages, sendMessage, isLoading, stop, setMessages } = useNothingMachineChat()
 
   const tabFields = IDENTITY_FIELDS.filter((f) => f.tab === activeTab)
   const currentTab = TABS.find((t) => t.id === activeTab)
@@ -58,6 +61,13 @@ export function MobileLayout() {
       closeMobileEditor()
     }
   }
+
+  // Auto-scroll chat when messages change
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
+    }
+  }, [messages])
 
   // Auto-focus textarea when mobile editor opens
   useEffect(() => {
@@ -202,17 +212,57 @@ export function MobileLayout() {
             )}
 
             {/* Chat Area */}
-            <div className="flex-1 flex flex-col items-center justify-center px-6">
-              <div
-                className="w-12 h-12 rounded-full bg-white mb-5"
-              />
-              <h2 className="text-white text-lg font-medium mb-2">{machineName === 'Machine' ? 'Nothing Machine' : machineName}</h2>
-              <p className="text-white/40 text-sm text-center max-w-[280px]">
-                {injectedFiles.length > 0
-                  ? `${injectedFiles.length} file${injectedFiles.length > 1 ? 's' : ''} in context. Start chatting.`
-                  : "Configure your machine's identity and start chatting."
-                }
-              </p>
+            <div ref={chatScrollRef} className="flex-1 overflow-y-auto">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center px-6">
+                  <div className="w-12 h-12 rounded-full bg-white mb-5" />
+                  <h2 className="text-white text-lg font-medium mb-2">{machineName === 'Machine' ? 'Nothing Machine' : machineName}</h2>
+                  <p className="text-white/40 text-sm text-center max-w-[280px]">
+                    {injectedFiles.length > 0
+                      ? `${injectedFiles.length} file${injectedFiles.length > 1 ? 's' : ''} in context. Start chatting.`
+                      : "Configure your machine's identity and start chatting."
+                    }
+                  </p>
+                </div>
+              ) : (
+                <div className="px-4 py-4 space-y-4">
+                  {messages.map((msg) => {
+                    const isUser = msg.role === 'user'
+                    const text = Array.isArray(msg.parts)
+                      ? msg.parts.filter((p: { type: string; text?: string }) => p.type === 'text' && p.text).map((p: { type: string; text?: string }) => p.text).join('')
+                      : ''
+                    if (!text) return null
+                    return (
+                      <div key={msg.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          className="max-w-[85%] rounded-2xl px-4 py-2.5"
+                          style={{
+                            background: isUser ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                            border: isUser ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                          }}
+                        >
+                          {!isUser && (
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Bot className="w-3 h-3 text-white/40" />
+                              <span className="text-white/40 text-[10px] font-medium">{machineName}</span>
+                            </div>
+                          )}
+                          <p className="text-white text-sm leading-relaxed whitespace-pre-wrap" style={{ fontWeight: 300 }}>
+                            {text}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {isLoading && messages[messages.length - 1]?.role === 'user' && (
+                    <div className="flex justify-start">
+                      <div className="rounded-2xl px-4 py-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <Loader2 className="w-4 h-4 text-white/40 animate-spin" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -320,7 +370,7 @@ export function MobileLayout() {
       </div>
 
       {/* Bottom Chat Input */}
-      <div className="px-3 py-3 border-t border-white/10">
+      <div className="px-3 pt-3 border-t border-white/10" style={{ paddingBottom: 'max(12px, calc(env(safe-area-inset-bottom, 0px) + 12px))' }}>
         <div className="flex items-center gap-2">
           <button
             className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
@@ -336,13 +386,34 @@ export function MobileLayout() {
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && chatInput.trim()) {
+                  e.preventDefault()
+                  sendMessage({ text: chatInput.trim() })
+                  setChatInput('')
+                }
+              }}
               placeholder="Ask anything"
-              className="flex-1 bg-transparent border-none outline-none text-white text-sm placeholder:text-white/40"
+              className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-white/40"
+              style={{ fontSize: 16 }}
             />
-            <Mic className="w-5 h-5 text-white/40 ml-2" />
+            {isLoading ? (
+              <button onClick={stop} className="border-0 bg-transparent p-0 ml-2">
+                <StopCircle className="w-5 h-5 text-red-400" />
+              </button>
+            ) : (
+              <Mic className="w-5 h-5 text-white/40 ml-2" />
+            )}
           </div>
           <button
-            className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
+            onClick={() => {
+              if (chatInput.trim() && !isLoading) {
+                sendMessage({ text: chatInput.trim() })
+                setChatInput('')
+              }
+            }}
+            disabled={!chatInput.trim() || isLoading}
+            className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 border-0 transition-all active:scale-90"
             style={{ background: chatInput.trim() ? '#fff' : 'rgba(255,255,255,0.08)' }}
           >
             <Send className="w-5 h-5" style={{ color: chatInput.trim() ? '#000' : 'rgba(255,255,255,0.4)' }} />
