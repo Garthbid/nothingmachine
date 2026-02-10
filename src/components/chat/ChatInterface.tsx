@@ -236,6 +236,26 @@ export function ChatInterface() {
     setActiveConversationId(null)
   }, [setMessages, setActiveConversationId])
 
+  // Auto-load most recent conversation from last 24 hours on mount
+  useEffect(() => {
+    const autoLoad = async () => {
+      const { fetchConversations } = useConversationStore.getState()
+      await fetchConversations()
+      const convs = useConversationStore.getState().conversations
+      if (convs.length > 0 && messages.length === 0) {
+        const latest = convs[0]
+        const updatedAt = new Date(latest.updated_at).getTime()
+        const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
+        if (updatedAt > twentyFourHoursAgo) {
+          const msgs = await loadConversation(latest.id)
+          if (msgs) setMessages(msgs as typeof messages)
+        }
+      }
+    }
+    autoLoad()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Expose handlers for parent components
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__loadConversation = handleLoadConversation;

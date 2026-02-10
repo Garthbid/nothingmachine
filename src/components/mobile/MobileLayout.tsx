@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { Menu, X, Search, MessageSquare, FolderOpen, Fingerprint, ChevronRight, Plus, Mic, Send, ArrowLeft, ChevronDown, Pencil, Check, StopCircle, Bot, User, Loader2, Copy } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Menu, X, Search, MessageSquare, FolderOpen, Fingerprint, ChevronRight, Plus, Mic, Send, ArrowLeft, ChevronDown, Pencil, Check, StopCircle, Bot, User, Loader2, Copy, Star, AlertTriangle } from 'lucide-react'
 import { useEditorStore } from '@/lib/editor-store'
 import { IDENTITY_FIELDS, TABS, FieldDefinition } from '@/lib/identity-fields'
 import { useStore } from '@/lib/store'
 import { useNothingMachineChat } from '@/lib/useChat'
+import { useConversationStore } from '@/lib/conversation-store'
+import { useProfileStore } from '@/lib/profile-store'
 
 const AI_MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', provider: 'Anthropic' },
@@ -34,7 +36,10 @@ export function MobileLayout() {
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const { files, injectedFileIds, injectFile, removeInjectedFile } = useStore()
   const { activeTab, setActiveTab, fieldValues, hasValue, setFieldValue } = useEditorStore()
-  const { messages, sendMessage, isLoading, stop, setMessages } = useNothingMachineChat()
+  const { messages, sendMessage, isLoading, stop, setMessages, status } = useNothingMachineChat()
+  const { activeConversationId, setActiveConversationId, createConversation, saveMessages, loadConversation, fetchConversations, conversations } = useConversationStore()
+  const { profile } = useProfileStore()
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const tabFields = IDENTITY_FIELDS.filter((f) => f.tab === activeTab)
   const currentTab = TABS.find((t) => t.id === activeTab)
@@ -61,6 +66,47 @@ export function MobileLayout() {
       closeMobileEditor()
     }
   }
+
+  // Auto-save messages to Supabase (debounced)
+  const debouncedSave = useCallback(
+    (convId: string, msgs: typeof messages) => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+      saveTimeoutRef.current = setTimeout(() => {
+        const dbMessages = msgs.map((m) => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          parts: m.parts || [],
+        }))
+        saveMessages(convId, dbMessages, profile?.name || null)
+      }, 1500)
+    },
+    [saveMessages, profile?.name]
+  )
+
+  // Save when messages change and streaming stops
+  useEffect(() => {
+    if (!activeConversationId || messages.length === 0 || status === 'streaming') return
+    debouncedSave(activeConversationId, messages)
+  }, [messages, activeConversationId, status, debouncedSave])
+
+  // Auto-load most recent conversation from last 24 hours on mount
+  useEffect(() => {
+    const autoLoad = async () => {
+      await fetchConversations()
+      const convs = useConversationStore.getState().conversations
+      if (convs.length > 0 && messages.length === 0) {
+        const latest = convs[0]
+        const updatedAt = new Date(latest.updated_at).getTime()
+        const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
+        if (updatedAt > twentyFourHoursAgo) {
+          const msgs = await loadConversation(latest.id)
+          if (msgs) setMessages(msgs as typeof messages)
+        }
+      }
+    }
+    autoLoad()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Auto-scroll chat when messages change
   useEffect(() => {
@@ -369,8 +415,30 @@ export function MobileLayout() {
         )}
       </div>
 
+      {/* North Star & Bottleneck */}
+      {activeView === 'chat' && (
+        <div className="px-3 pt-2 pb-1 border-t border-white/10 flex gap-2">
+          <MobileFocusField
+            icon={<Star className="w-3 h-3" />}
+            label="North Star"
+            placeholder="#1 goal?"
+            value={fieldValues['_focusNorthStar'] || ''}
+            onChange={(val) => setFieldValue('_focusNorthStar', val)}
+            color="#facc15"
+          />
+          <MobileFocusField
+            icon={<AlertTriangle className="w-3 h-3" />}
+            label="Bottleneck"
+            placeholder="Blocking?"
+            value={fieldValues['_focusBottleneck'] || ''}
+            onChange={(val) => setFieldValue('_focusBottleneck', val)}
+            color="#f97316"
+          />
+        </div>
+      )}
+
       {/* Bottom Chat Input */}
-      <div className="px-3 pt-3 border-t border-white/10" style={{ paddingBottom: 'max(12px, calc(env(safe-area-inset-bottom, 0px) + 12px))' }}>
+      <div className="px-3 pt-2 border-t border-white/10" style={{ paddingBottom: 'max(12px, calc(env(safe-area-inset-bottom, 0px) + 12px))' }}>
         <div className="flex items-center gap-2">
           <button
             className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
@@ -386,9 +454,12 @@ export function MobileLayout() {
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
+              onKeyDown={async (e) => {
                 if (e.key === 'Enter' && !e.shiftKey && chatInput.trim()) {
                   e.preventDefault()
+                  if (!activeConversationId) {
+                    await createConversation(profile?.name || null)
+                  }
                   sendMessage({ text: chatInput.trim() })
                   setChatInput('')
                 }
@@ -406,8 +477,11 @@ export function MobileLayout() {
             )}
           </div>
           <button
-            onClick={() => {
+            onClick={async () => {
               if (chatInput.trim() && !isLoading) {
+                if (!activeConversationId) {
+                  await createConversation(profile?.name || null)
+                }
                 sendMessage({ text: chatInput.trim() })
                 setChatInput('')
               }
@@ -676,6 +750,79 @@ export function MobileLayout() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MobileFocusField({
+  icon,
+  label,
+  placeholder,
+  value,
+  onChange,
+  color,
+}: {
+  icon: React.ReactNode
+  label: string
+  placeholder: string
+  value: string
+  onChange: (val: string) => void
+  color: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [editing])
+
+  const save = () => {
+    onChange(draft)
+    setEditing(false)
+  }
+
+  return (
+    <div
+      onClick={() => {
+        if (!editing) {
+          setDraft(value)
+          setEditing(true)
+        }
+      }}
+      className="flex-1 rounded-lg px-2.5 py-1.5"
+      style={{
+        background: 'rgba(255,255,255,0.03)',
+        border: `1px solid ${value ? color + '33' : 'rgba(255,255,255,0.06)'}`,
+      }}
+    >
+      <div className="flex items-center gap-1 mb-0.5">
+        <span style={{ color, opacity: value ? 1 : 0.4 }}>{icon}</span>
+        <span style={{ fontSize: 9, fontWeight: 600, color, opacity: value ? 1 : 0.4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {label}
+        </span>
+      </div>
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); save() }
+            if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+          }}
+          placeholder={placeholder}
+          className="w-full bg-transparent border-none outline-none text-white"
+          style={{ fontSize: 16, fontWeight: 300, padding: 0 }}
+        />
+      ) : (
+        <div style={{ fontSize: 11, fontWeight: 300, color: value ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.15)', lineHeight: 1.4, minHeight: 16 }}>
+          {value || placeholder}
         </div>
       )}
     </div>
