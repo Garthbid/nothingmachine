@@ -33,7 +33,7 @@ function CenterPanel() {
 function LeftPanel() {
   const handleSelectConversation = useCallback(
     async (id: string) => {
-      const loadFn = (window as Record<string, unknown>).__loadConversation as
+      const loadFn = (window as unknown as Record<string, unknown>).__loadConversation as
         | ((id: string) => Promise<void>)
         | undefined
       if (loadFn) await loadFn(id)
@@ -42,7 +42,7 @@ function LeftPanel() {
   )
 
   const handleNewConversation = useCallback(() => {
-    const newChatFn = (window as Record<string, unknown>).__newChat as (() => void) | undefined
+    const newChatFn = (window as unknown as Record<string, unknown>).__newChat as (() => void) | undefined
     if (newChatFn) newChatFn()
   }, [])
 

@@ -238,11 +238,11 @@ export function ChatInterface() {
 
   // Expose handlers for parent components
   useEffect(() => {
-    (window as Record<string, unknown>).__loadConversation = handleLoadConversation;
-    (window as Record<string, unknown>).__newChat = handleNewChat
+    (window as unknown as Record<string, unknown>).__loadConversation = handleLoadConversation;
+    (window as unknown as Record<string, unknown>).__newChat = handleNewChat
     return () => {
-      delete (window as Record<string, unknown>).__loadConversation
-      delete (window as Record<string, unknown>).__newChat
+      delete (window as unknown as Record<string, unknown>).__loadConversation
+      delete (window as unknown as Record<string, unknown>).__newChat
     }
   }, [handleLoadConversation, handleNewChat])
 
