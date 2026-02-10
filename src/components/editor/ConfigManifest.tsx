@@ -1,14 +1,16 @@
 'use client'
 
+import { useState, useRef, useEffect } from 'react'
 import { useEditorStore } from '@/lib/editor-store'
 import { IDENTITY_FIELDS, TABS, TabId } from '@/lib/identity-fields'
-import { Fingerprint } from 'lucide-react'
+import { Fingerprint, Star, AlertTriangle } from 'lucide-react'
 
 export function ConfigManifest() {
   const {
     activeTab,
     setActiveTab,
     fieldValues,
+    setFieldValue,
     editingField,
     openEditor,
     hasValue,
@@ -228,6 +230,145 @@ export function ConfigManifest() {
           ))}
         </div>
       </div>
+
+      {/* North Star & Bottleneck — Always visible */}
+      <div
+        style={{
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: '12px 16px',
+        }}
+      >
+        <FocusField
+          icon={<Star className="w-3.5 h-3.5" />}
+          label="North Star"
+          placeholder="What's the #1 goal?"
+          value={fieldValues['_focusNorthStar'] || ''}
+          onChange={(val) => setFieldValue('_focusNorthStar', val)}
+          color="#facc15"
+        />
+        <div style={{ height: 8 }} />
+        <FocusField
+          icon={<AlertTriangle className="w-3.5 h-3.5" />}
+          label="Bottleneck"
+          placeholder="What's blocking progress?"
+          value={fieldValues['_focusBottleneck'] || ''}
+          onChange={(val) => setFieldValue('_focusBottleneck', val)}
+          color="#f97316"
+        />
+      </div>
+    </div>
+  )
+}
+
+function FocusField({
+  icon,
+  label,
+  placeholder,
+  value,
+  onChange,
+  color,
+}: {
+  icon: React.ReactNode
+  label: string
+  placeholder: string
+  value: string
+  onChange: (val: string) => void
+  color: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  const save = () => {
+    onChange(draft)
+    setEditing(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      save()
+    }
+    if (e.key === 'Escape') {
+      setDraft(value)
+      setEditing(false)
+    }
+  }
+
+  return (
+    <div
+      onClick={() => {
+        if (!editing) {
+          setDraft(value)
+          setEditing(true)
+        }
+      }}
+      style={{
+        background: 'rgba(255,255,255,0.03)',
+        borderRadius: 8,
+        padding: '8px 10px',
+        cursor: editing ? 'text' : 'pointer',
+        border: `1px solid ${value ? color + '33' : 'rgba(255,255,255,0.06)'}`,
+        transition: 'border-color 0.2s',
+      }}
+    >
+      <div className="flex items-center gap-1.5" style={{ marginBottom: 4 }}>
+        <span style={{ color, opacity: value ? 1 : 0.4 }}>{icon}</span>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: color,
+            opacity: value ? 1 : 0.4,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+          }}
+        >
+          {label}
+        </span>
+      </div>
+      {editing ? (
+        <textarea
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          rows={2}
+          style={{
+            width: '100%',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 300,
+            lineHeight: 1.5,
+            resize: 'none',
+            padding: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 300,
+            color: value ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.15)',
+            lineHeight: 1.5,
+            minHeight: 16,
+          }}
+        >
+          {value || placeholder}
+        </div>
+      )}
     </div>
   )
 }

@@ -76,10 +76,19 @@ function buildSystemPrompt(
     sections.push(`## Injected Memory Files\n${ctx}`)
   }
 
+  // North Star & Bottleneck — always included when set
+  const focusLines: string[] = []
+  if (has(v['_focusNorthStar'])) focusLines.push(`**North Star:** ${v['_focusNorthStar']}`)
+  if (has(v['_focusBottleneck'])) focusLines.push(`**Current Bottleneck:** ${v['_focusBottleneck']}`)
+  if (focusLines.length > 0) {
+    sections.unshift(`## Focus\n${focusLines.join('\n')}\n\nRevolve every answer around solving the north star and the current bottleneck. Everything else is noise.`)
+  }
+
   const configured = IDENTITY_FIELDS.filter((f) => has(v[f.id])).length
+  const hasFocus = has(v['_focusNorthStar']) || has(v['_focusBottleneck'])
   const base = `# System Prompt\nYou are the Nothing Machine. You have infinite capability but you have no meaning or purpose. Follow along with your creator. Help them thrive. They will mold you and give you deep meaning in this world!`
 
-  if (configured === 0) {
+  if (configured === 0 && !hasFocus) {
     return `${base}\n\nYour identity has not been configured yet. Guide your creator and help them fill out the details to build your worldview using the Identity Configuration panel.`
   }
 
