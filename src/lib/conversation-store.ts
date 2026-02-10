@@ -53,6 +53,7 @@ export const useConversationStore = create<ConversationState>()((set, get) => ({
   loading: false,
 
   fetchConversations: async () => {
+    if (!supabase) return
     set({ loading: true })
     try {
       const { data, error } = await supabase
@@ -82,6 +83,7 @@ export const useConversationStore = create<ConversationState>()((set, get) => ({
   },
 
   createConversation: async (userName) => {
+    if (!supabase) return null
     const { data, error } = await supabase
       .from('conversations')
       .insert({
@@ -103,6 +105,7 @@ export const useConversationStore = create<ConversationState>()((set, get) => ({
   },
 
   saveMessages: async (conversationId, messages, userName) => {
+    if (!supabase) return
     const title = generateTitle(messages)
     const { error } = await supabase
       .from('conversations')
@@ -130,6 +133,7 @@ export const useConversationStore = create<ConversationState>()((set, get) => ({
   },
 
   loadConversation: async (id) => {
+    if (!supabase) return null
     const { data, error } = await supabase
       .from('conversations')
       .select('messages')
@@ -146,6 +150,7 @@ export const useConversationStore = create<ConversationState>()((set, get) => ({
   },
 
   deleteConversation: async (id) => {
+    if (!supabase) return
     const { error } = await supabase
       .from('conversations')
       .delete()

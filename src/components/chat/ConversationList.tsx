@@ -26,6 +26,7 @@ export function ConversationList({
     let mounted = true
     const setupRealtime = async () => {
       const { supabase } = await import('@/lib/supabase')
+      if (!supabase) return
       const channel = supabase
         .channel('conversations-changes')
         .on(
