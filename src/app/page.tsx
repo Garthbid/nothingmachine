@@ -1,7 +1,7 @@
 'use client'
 
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent } from '@dnd-kit/core'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useStore } from '@/lib/store'
 import { MemoryFile } from '@/lib/types'
 import { Header } from '@/components/layout/Header'
@@ -10,6 +10,7 @@ import { MemoryExplorer } from '@/components/memory/MemoryExplorer'
 import { TerminalEditor } from '@/components/editor/TerminalEditor'
 import { ConfigManifest } from '@/components/editor/ConfigManifest'
 import { ChatInterface } from '@/components/chat/ChatInterface'
+import { ConversationList } from '@/components/chat/ConversationList'
 import { MobileLayout } from '@/components/mobile/MobileLayout'
 import { FileText } from 'lucide-react'
 import { useEditorStore } from '@/lib/editor-store'
@@ -26,6 +27,34 @@ function CenterPanel() {
         <ChatInterface />
       </div>
     </>
+  )
+}
+
+function LeftPanel() {
+  const handleSelectConversation = useCallback(
+    async (id: string) => {
+      const loadFn = (window as Record<string, unknown>).__loadConversation as
+        | ((id: string) => Promise<void>)
+        | undefined
+      if (loadFn) await loadFn(id)
+    },
+    []
+  )
+
+  const handleNewConversation = useCallback(() => {
+    const newChatFn = (window as Record<string, unknown>).__newChat as (() => void) | undefined
+    if (newChatFn) newChatFn()
+  }, [])
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="h-[40%] min-h-[150px] border-b border-white/10">
+        <ConversationList onSelect={handleSelectConversation} onNew={handleNewConversation} />
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <MemoryExplorer />
+      </div>
+    </div>
   )
 }
 
@@ -147,7 +176,7 @@ export default function Home() {
         ) : (
           <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
             <ResizablePanels
-              leftPanel={<MemoryExplorer />}
+              leftPanel={<LeftPanel />}
               centerPanel={<CenterPanel />}
               rightPanel={<ConfigManifest />}
               defaultLeftWidth={220}

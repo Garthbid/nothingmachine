@@ -1,7 +1,9 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { useNothingMachineChat } from '@/lib/useChat'
+import { useConversationStore } from '@/lib/conversation-store'
+import { useProfileStore } from '@/lib/profile-store'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ContextBar } from './ContextBar'
@@ -179,17 +181,70 @@ function MessageBubble({
 }
 
 export function ChatInterface() {
-  const { messages, sendMessage, isLoading, stop, setMessages } = useNothingMachineChat()
+  const { messages, sendMessage, isLoading, stop, setMessages, status } = useNothingMachineChat()
+  const { activeConversationId, setActiveConversationId, createConversation, saveMessages, loadConversation } =
+    useConversationStore()
+  const { profile } = useProfileStore()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isAutoScrolling = useRef(false)
   const userScrolledUp = useRef(false)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { setNodeRef, isOver } = useDroppable({
     id: 'chat-dropzone',
   })
+
+  // Auto-save messages to Supabase (debounced)
+  const debouncedSave = useCallback(
+    (convId: string, msgs: typeof messages) => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+      saveTimeoutRef.current = setTimeout(() => {
+        const dbMessages = msgs.map((m) => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant' | 'system',
+          parts: m.parts || [],
+        }))
+        saveMessages(convId, dbMessages, profile?.name || null)
+      }, 1500)
+    },
+    [saveMessages, profile?.name]
+  )
+
+  // Save when messages change and streaming stops
+  useEffect(() => {
+    if (!activeConversationId || messages.length === 0 || status === 'streaming') return
+    debouncedSave(activeConversationId, messages)
+  }, [messages, activeConversationId, status, debouncedSave])
+
+  // Load a conversation's messages
+  const handleLoadConversation = useCallback(
+    async (id: string) => {
+      const msgs = await loadConversation(id)
+      if (msgs) {
+        setMessages(msgs as typeof messages)
+      }
+    },
+    [loadConversation, setMessages]
+  )
+
+  // Clear chat and start fresh
+  const handleNewChat = useCallback(() => {
+    setMessages([])
+    setActiveConversationId(null)
+  }, [setMessages, setActiveConversationId])
+
+  // Expose handlers for parent components
+  useEffect(() => {
+    (window as Record<string, unknown>).__loadConversation = handleLoadConversation;
+    (window as Record<string, unknown>).__newChat = handleNewChat
+    return () => {
+      delete (window as Record<string, unknown>).__loadConversation
+      delete (window as Record<string, unknown>).__newChat
+    }
+  }, [handleLoadConversation, handleNewChat])
 
   // Detect when user scrolls up manually (ignore scroll events caused by our auto-scroll)
   const handleScroll = () => {
@@ -216,11 +271,21 @@ export function ChatInterface() {
 
   const handleClearChat = () => {
     setMessages([])
+    setActiveConversationId(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || isLoading) return
+
+    // Auto-create a conversation if none is active
+    if (!activeConversationId) {
+      const newId = await createConversation(profile?.name || null)
+      if (!newId) {
+        console.error('Failed to create conversation in Supabase')
+        // Still allow chatting locally even if Supabase fails
+      }
+    }
 
     const message = input.trim()
     setInput('')
