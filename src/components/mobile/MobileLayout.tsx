@@ -8,6 +8,7 @@ import { useStore } from '@/lib/store'
 import { useNothingMachineChat } from '@/lib/useChat'
 import { useConversationStore } from '@/lib/conversation-store'
 import { useProfileStore } from '@/lib/profile-store'
+import { RichardIdeaMode } from '@/components/chat/RichardIdeaMode'
 
 const AI_MODELS = [
   { id: 'opus-4.5', name: 'Opus 4.5', provider: 'Anthropic' },
@@ -44,6 +45,8 @@ export function MobileLayout() {
   const tabFields = IDENTITY_FIELDS.filter((f) => f.tab === activeTab)
   const currentTab = TABS.find((t) => t.id === activeTab)
   const injectedFiles = files.filter((f) => injectedFileIds.includes(f.id))
+
+  const handleMobileReconnect = useCallback(() => {}, [])
 
   const handleNavigation = (view: 'chat' | 'memory' | 'identity') => {
     setActiveView(view)
@@ -221,9 +224,9 @@ export function MobileLayout() {
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {activeView === 'chat' && (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col">
             {/* Context Bar */}
             {injectedFiles.length > 0 && (
               <div className="px-3 py-2 border-b border-white/10">
@@ -258,18 +261,19 @@ export function MobileLayout() {
             )}
 
             {/* Chat Area */}
-            <div ref={chatScrollRef} className="flex-1 overflow-y-auto">
+            <div
+              ref={chatScrollRef}
+              className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
               {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center px-6">
-                  <div className="w-12 h-12 rounded-full bg-white mb-5" />
-                  <h2 className="text-white text-lg font-medium mb-2">{machineName === 'Machine' ? 'Nothing Machine' : machineName}</h2>
-                  <p className="text-white/40 text-sm text-center max-w-[280px]">
-                    {injectedFiles.length > 0
-                      ? `${injectedFiles.length} file${injectedFiles.length > 1 ? 's' : ''} in context. Start chatting.`
-                      : "Configure your machine's identity and start chatting."
-                    }
-                  </p>
-                </div>
+                <RichardIdeaMode
+                  isConnected={false}
+                  richardStatus="disconnected"
+                  onReconnect={handleMobileReconnect}
+                  mode="mobile"
+                  showConnectionControls={false}
+                />
               ) : (
                 <div className="px-4 py-4 space-y-4">
                   {messages.map((msg) => {
@@ -552,6 +556,28 @@ export function MobileLayout() {
           >
             <Fingerprint className="w-6 h-6 text-white/60 ml-1" />
             <span className="text-white/80">Identity Config</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setSidebarOpen(false)
+              window.location.href = "/ideamarket"
+            }}
+            className="w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-white/5 transition-colors border-0 bg-transparent"
+          >
+            <Star className="w-6 h-6 text-white/60 ml-1" />
+            <span className="text-white/80">Idea Market</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setSidebarOpen(false)
+              window.location.href = "/cognitionmarket"
+            }}
+            className="w-full flex items-center gap-4 px-4 py-3 text-left hover:bg-white/5 transition-colors border-0 bg-transparent"
+          >
+            <Bot className="w-6 h-6 text-white/60 ml-1" />
+            <span className="text-white/80">Cognition Market</span>
           </button>
 
           {/* Divider */}

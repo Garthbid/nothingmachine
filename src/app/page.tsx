@@ -59,7 +59,7 @@ function LeftPanel() {
 }
 
 export default function Home() {
-  const { injectFile, currentView, setCurrentView } = useStore()
+  const { injectFile, currentView, setCurrentView, syncFromRepo, lastSyncedAt } = useStore()
   const { profile } = useProfileStore()
   const [activeFile, setActiveFile] = useState<MemoryFile | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -67,11 +67,17 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true)
+    // Auto-sync from GitHub on first load (if not synced in the last hour)
+    const oneHour = 60 * 60 * 1000
+    if (!lastSyncedAt || Date.now() - lastSyncedAt > oneHour) {
+      syncFromRepo()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Show profile modal on first visit if no profile set
   useEffect(() => {
-    if (mounted && !profile) {
+    if (mounted && (!profile || !profile.onboardingCompleted)) {
       setShowProfilePrompt(true)
     }
   }, [mounted, profile])

@@ -15,6 +15,7 @@ import {
   Sparkles,
   Brain,
   BookOpen,
+  RefreshCw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -177,7 +178,7 @@ function FolderItem({ node, depth = 0 }: { node: FolderNode; depth?: number }) {
 }
 
 export function MemoryExplorer() {
-  const { files, editingFile, setEditingFile } = useStore()
+  const { files, editingFile, setEditingFile, syncFromRepo, isSyncing } = useStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [showNewFileDialog, setShowNewFileDialog] = useState(false)
 
@@ -196,14 +197,26 @@ export function MemoryExplorer() {
       <div className="p-3 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold">Memory Files</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="w-6 h-6"
-            onClick={() => setShowNewFileDialog(true)}
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-6 h-6"
+              title="Sync from GitHub"
+              onClick={() => syncFromRepo()}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={cn("w-3.5 h-3.5", isSyncing && "animate-spin")} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-6 h-6"
+              onClick={() => setShowNewFileDialog(true)}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

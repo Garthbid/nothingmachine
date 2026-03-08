@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { MemoryFile, Message, SoulConfig, Constraint } from './types'
 import { DEFAULT_FILES } from './richard-files'
+import { syncFromGitHub } from './github-sync'
 
 const defaultSoulConfig: SoulConfig = {
   purpose: '',
@@ -614,6 +615,11 @@ interface NothingMachineStore {
   startFromScratch: () => void
   resetToBlankSlate: () => void
 
+  // GitHub sync
+  isSyncing: boolean
+  lastSyncedAt: number | null
+  syncFromRepo: () => Promise<void>
+
   // Computed
   getInjectedFiles: () => MemoryFile[]
   getFileById: (id: string) => MemoryFile | undefined
@@ -639,6 +645,8 @@ export const useStore = create<NothingMachineStore>()(
       isStreaming: false,
       soulConfig: defaultSoulConfig,
       editingFile: null,
+      isSyncing: false,
+      lastSyncedAt: null,
 
       // File actions
       setFiles: (files) => set({ files }),
@@ -753,6 +761,38 @@ export const useStore = create<NothingMachineStore>()(
         injectedFileIds: [],
         soulConfig: defaultSoulConfig,
       }),
+
+      // GitHub sync
+      syncFromRepo: async () => {
+        set({ isSyncing: true })
+        try {
+          const repoFiles = await syncFromGitHub()
+
+          // Determine file type from path
+          const typeFromPath = (path: string): MemoryFile['type'] => {
+            if (path.startsWith('/soul') || ['/SOUL.md', '/IDENTITY.md', '/VOICE.md', '/USER.md', '/HEARTBEAT.md'].some((s) => path.endsWith(s))) return 'soul'
+            if (path.startsWith('/memory/daily') || /\/\d{4}-\d{2}-\d{2}\.md$/.test(path)) return 'daily'
+            if (path.startsWith('/memory')) return 'memory'
+            if (path.startsWith('/knowledge')) return 'knowledge'
+            return 'custom'
+          }
+
+          const newFiles: MemoryFile[] = repoFiles.map((f: { path: string; name: string; content: string }) => ({
+            id: `gh-${f.path.replace(/[^a-zA-Z0-9]/g, '-')}`,
+            name: f.name,
+            path: f.path,
+            content: f.content,
+            type: typeFromPath(f.path),
+            lastModified: new Date(),
+            injected: false,
+          }))
+
+          set({ files: newFiles, isSyncing: false, lastSyncedAt: Date.now() })
+        } catch (err) {
+          console.error('GitHub sync failed:', err)
+          set({ isSyncing: false })
+        }
+      },
 
       // Computed values
       getInjectedFiles: () => {

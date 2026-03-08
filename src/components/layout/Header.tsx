@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
-import { ChevronDown, Home, User } from 'lucide-react'
+import { ChevronDown, Home, LineChart, BrainCircuit, User, Wifi, WifiOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -14,11 +15,13 @@ import { useProfileStore } from '@/lib/profile-store'
 import { useTeamStore } from '@/lib/team-store'
 import { ProfileModal } from '@/components/ProfileModal'
 import { TeamModal } from '@/components/TeamModal'
+import { useRichard } from '@/lib/useRichard'
 
 export function Header() {
   const { setCurrentView } = useStore()
   const { profile } = useProfileStore()
   const { members } = useTeamStore()
+  const { status: richardStatus, connect, disconnect, isConnected } = useRichard()
   const [profileOpen, setProfileOpen] = useState(false)
   const [teamOpen, setTeamOpen] = useState(false)
 
@@ -90,13 +93,73 @@ export function Header() {
               {members.length > 0 ? `+${members.length}` : '+'}
             </button>
           </div>
+          <Link
+            href="/ideamarket"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-white/15 text-white/65 hover:text-emerald-300 hover:border-emerald-400/35 hover:bg-emerald-500/10 transition-colors"
+          >
+            <LineChart className="w-3.5 h-3.5" />
+            <span className="text-xs uppercase tracking-[0.08em]">Idea Market</span>
+          </Link>
+          <Link
+            href="/cognitionmarket"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-white/15 text-white/65 hover:text-cyan-300 hover:border-cyan-400/35 hover:bg-cyan-500/10 transition-colors"
+          >
+            <BrainCircuit className="w-3.5 h-3.5" />
+            <span className="text-xs uppercase tracking-[0.08em]">Cognition</span>
+          </Link>
+
+          <div className="w-px h-4 bg-white/10" />
+
+          <button
+            onClick={isConnected ? disconnect : connect}
+            className="flex items-center gap-2 px-2 py-1 rounded-md transition-colors cursor-pointer hover:bg-white/5"
+            style={{ background: 'transparent', border: 'none' }}
+            title={
+              richardStatus === 'connected'
+                ? 'Connected to Clawdbot — click to disconnect'
+                : richardStatus === 'connecting'
+                ? 'Connecting to Clawdbot...'
+                : richardStatus === 'error'
+                ? 'Connection error — click to retry'
+                : 'Click to connect to Clawdbot'
+            }
+          >
+            {richardStatus === 'connecting' ? (
+              <Loader2 className="w-3.5 h-3.5 text-yellow-400 animate-spin" />
+            ) : isConnected ? (
+              <Wifi className="w-3.5 h-3.5 text-green-400" />
+            ) : richardStatus === 'error' ? (
+              <WifiOff className="w-3.5 h-3.5 text-red-400" />
+            ) : (
+              <WifiOff className="w-3.5 h-3.5 text-white/40" />
+            )}
+            <span
+              className={`text-xs font-medium ${
+                isConnected
+                  ? 'text-green-400'
+                  : richardStatus === 'connecting'
+                  ? 'text-yellow-400'
+                  : richardStatus === 'error'
+                  ? 'text-red-400'
+                  : 'text-white/40'
+              }`}
+            >
+              {richardStatus === 'connected'
+                ? 'Clawdbot Live'
+                : richardStatus === 'connecting'
+                ? 'Connecting...'
+                : richardStatus === 'error'
+                ? 'Error'
+                : 'Clawdbot'}
+            </span>
+          </button>
 
           <div className="w-px h-4 bg-white/10" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="gap-2 text-white/70 hover:text-white hover:bg-white/5">
-                <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-white'}`} />
                 Richard
                 <ChevronDown className="w-3 h-3" />
               </Button>
@@ -104,8 +167,8 @@ export function Header() {
             <DropdownMenuContent align="end" className="bg-[#0a0a0a] border-white/10">
               <DropdownMenuItem className="text-white/70">
                 <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                  Richard (Active)
+                  <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400' : 'bg-white'}`} />
+                  Richard {isConnected ? '(Live)' : '(Active)'}
                 </div>
               </DropdownMenuItem>
             </DropdownMenuContent>

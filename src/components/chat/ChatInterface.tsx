@@ -1,54 +1,42 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { useNothingMachineChat } from '@/lib/useChat'
 import { useConversationStore } from '@/lib/conversation-store'
 import { useProfileStore } from '@/lib/profile-store'
+import { useStore } from '@/lib/store'
+import { useRichard } from '@/lib/useRichard'
+import { onChat as onRichardChat, onActivity as onRichardActivity, connectToRichard } from '@/lib/richard'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ContextBar } from './ContextBar'
+import { RichardIdeaMode } from './RichardIdeaMode'
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
-import { Send, Loader2, Bot, User, Copy, Trash2, StopCircle } from 'lucide-react'
+import { Send, Loader2, Bot, User, Copy, Trash2, Wifi, WifiOff } from 'lucide-react'
 
-// UIMessage part types from AI SDK v6
-interface UIMessagePart {
-  type: 'text' | 'reasoning' | 'tool-invocation' | 'file' | string
-  text?: string
-}
-
-interface UIMessage {
+interface ChatMessage {
   id: string
-  role: 'system' | 'user' | 'assistant'
-  parts: UIMessagePart[]
+  role: 'user' | 'assistant'
+  text: string
 }
 
 function MessageBubble({
   message,
-  isLoading,
+  isStreaming,
 }: {
-  message: UIMessage
-  isLoading?: boolean
+  message: ChatMessage
+  isStreaming?: boolean
 }) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
 
-  // Extract text content from message parts (AI SDK v6 structure)
-  const getTextContent = (parts: UIMessagePart[]): string => {
-    if (!Array.isArray(parts)) return ''
-    return parts
-      .filter((p) => p.type === 'text' && p.text)
-      .map((p) => p.text)
-      .join('')
-  }
-
-  const textContent = getTextContent(message.parts)
-
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(textContent)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(message.text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch { /* ignore */ }
   }
 
   // Simple markdown-like rendering
@@ -75,42 +63,24 @@ function MessageBubble({
         <span key={i}>
           {part.split('\n').map((line, j) => {
             if (line.startsWith('### ')) {
-              return (
-                <h3 key={j} className="font-semibold text-base mt-3 mb-1">
-                  {line.slice(4)}
-                </h3>
-              )
+              return <h3 key={j} className="font-semibold text-base mt-3 mb-1">{line.slice(4)}</h3>
             }
             if (line.startsWith('## ')) {
-              return (
-                <h2 key={j} className="font-semibold text-lg mt-4 mb-2">
-                  {line.slice(3)}
-                </h2>
-              )
+              return <h2 key={j} className="font-semibold text-lg mt-4 mb-2">{line.slice(3)}</h2>
             }
             if (line.startsWith('# ')) {
-              return (
-                <h1 key={j} className="font-bold text-xl mt-4 mb-2">
-                  {line.slice(2)}
-                </h1>
-              )
+              return <h1 key={j} className="font-bold text-xl mt-4 mb-2">{line.slice(2)}</h1>
             }
             if (line.startsWith('- ') || line.startsWith('* ')) {
               return (
                 <div key={j} className="flex items-start gap-2 ml-2">
-                  <span className="text-muted-foreground">•</span>
+                  <span className="text-muted-foreground">&bull;</span>
                   <span>{formatInline(line.slice(2))}</span>
                 </div>
               )
             }
-            if (line.trim() === '') {
-              return <br key={j} />
-            }
-            return (
-              <p key={j} className="my-1">
-                {formatInline(line)}
-              </p>
-            )
+            if (line.trim() === '') return <br key={j} />
+            return <p key={j} className="my-1">{formatInline(line)}</p>
           })}
         </span>
       )
@@ -127,11 +97,7 @@ function MessageBubble({
         return <em key={i}>{part.slice(1, -1)}</em>
       }
       if (part.startsWith('`') && part.endsWith('`')) {
-        return (
-          <code key={i} className="bg-background/50 px-1 py-0.5 rounded text-sm">
-            {part.slice(1, -1)}
-          </code>
-        )
+        return <code key={i} className="bg-background/50 px-1 py-0.5 rounded text-sm">{part.slice(1, -1)}</code>
       }
       return part
     })
@@ -152,16 +118,16 @@ function MessageBubble({
         )}
       >
         <div className="text-sm">
-          {renderContent(textContent)}
-          {isLoading && isAssistant && !textContent && (
+          {renderContent(message.text)}
+          {isStreaming && isAssistant && !message.text && (
             <Loader2 className="h-4 w-4 animate-spin" />
           )}
-          {isLoading && isAssistant && textContent && (
+          {isStreaming && isAssistant && message.text && (
             <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
           )}
         </div>
 
-        {isAssistant && !isLoading && textContent && (
+        {isAssistant && !isStreaming && message.text && (
           <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button variant="ghost" size="icon" className="w-6 h-6" onClick={handleCopy}>
               <Copy className="w-3 h-3" />
@@ -181,31 +147,106 @@ function MessageBubble({
 }
 
 export function ChatInterface() {
-  const { messages, sendMessage, isLoading, stop, setMessages, status } = useNothingMachineChat()
-  const { activeConversationId, setActiveConversationId, createConversation, saveMessages, loadConversation } =
+  const { activeConversationId, setActiveConversationId, createConversation, saveMessages } =
     useConversationStore()
   const { profile } = useProfileStore()
+  const { isConnected, send: chatSend, status: richardStatus, connect } = useRichard()
+  const { files, injectedFileIds } = useStore()
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [isWaiting, setIsWaiting] = useState(false)
+  const [activity, setActivity] = useState<string>('thinking')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isAutoScrolling = useRef(false)
   const userScrolledUp = useRef(false)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Track the current assistant message being streamed
+  const streamingMsgId = useRef<string | null>(null)
 
   const { setNodeRef, isOver } = useDroppable({
     id: 'chat-dropzone',
   })
 
+  // Auto-connect to Richard on mount
+  useEffect(() => {
+    connectToRichard()
+  }, [])
+
+  // Listen for Richard's chat responses and stream them into messages
+  useEffect(() => {
+    const unsubActivity = onRichardActivity((act) => {
+      if (act !== 'done') {
+        setActivity(act)
+      }
+    })
+
+    const unsub = onRichardChat((text, done) => {
+      if (done && text) {
+        // Final event with full text — replace or create the message with complete text
+        setIsWaiting(false)
+        setMessages((prev) => {
+          if (streamingMsgId.current) {
+            // Replace the streaming message with the final complete text
+            const updated = prev.map((m) =>
+              m.id === streamingMsgId.current ? { ...m, text } : m
+            )
+            streamingMsgId.current = null
+            setIsStreaming(false)
+            return updated
+          }
+          // No streaming message yet — create the full message directly
+          streamingMsgId.current = null
+          setIsStreaming(false)
+          return [
+            ...prev,
+            {
+              id: `richard-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              role: 'assistant' as const,
+              text,
+            },
+          ]
+        })
+      } else if (text && !done) {
+        // Streaming delta — append to current message
+        setIsWaiting(false)
+        setMessages((prev) => {
+          if (streamingMsgId.current) {
+            return prev.map((m) =>
+              m.id === streamingMsgId.current
+                ? { ...m, text: m.text + text }
+                : m
+            )
+          }
+          const id = `richard-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+          streamingMsgId.current = id
+          setIsStreaming(true)
+          return [...prev, { id, role: 'assistant' as const, text }]
+        })
+      } else if (done && !text) {
+        // Done signal with no text
+        streamingMsgId.current = null
+        setIsStreaming(false)
+        setIsWaiting(false)
+      }
+    })
+    return () => {
+      unsub()
+      unsubActivity()
+    }
+  }, [])
+
   // Auto-save messages to Supabase (debounced)
   const debouncedSave = useCallback(
-    (convId: string, msgs: typeof messages) => {
+    (convId: string, msgs: ChatMessage[]) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(() => {
         const dbMessages = msgs.map((m) => ({
           id: m.id,
           role: m.role as 'user' | 'assistant' | 'system',
-          parts: m.parts || [],
+          parts: [{ type: 'text' as const, text: m.text }],
         }))
         saveMessages(convId, dbMessages, profile?.name || null)
       }, 1500)
@@ -213,48 +254,40 @@ export function ChatInterface() {
     [saveMessages, profile?.name]
   )
 
-  // Save when messages change and streaming stops
+  // Save when messages change and not streaming
   useEffect(() => {
-    if (!activeConversationId || messages.length === 0 || status === 'streaming') return
+    if (!activeConversationId || messages.length === 0 || isStreaming) return
     debouncedSave(activeConversationId, messages)
-  }, [messages, activeConversationId, status, debouncedSave])
+  }, [messages, activeConversationId, isStreaming, debouncedSave])
 
-  // Load a conversation's messages
-  const handleLoadConversation = useCallback(
-    async (id: string) => {
-      const msgs = await loadConversation(id)
-      if (msgs) {
-        setMessages(msgs as typeof messages)
-      }
-    },
-    [loadConversation, setMessages]
-  )
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    }
+  }, [])
 
   // Clear chat and start fresh
   const handleNewChat = useCallback(() => {
     setMessages([])
     setActiveConversationId(null)
-  }, [setMessages, setActiveConversationId])
+  }, [setActiveConversationId])
 
-  // Auto-load most recent conversation from last 24 hours on mount
-  useEffect(() => {
-    const autoLoad = async () => {
-      const { fetchConversations } = useConversationStore.getState()
-      await fetchConversations()
-      const convs = useConversationStore.getState().conversations
-      if (convs.length > 0 && messages.length === 0) {
-        const latest = convs[0]
-        const updatedAt = new Date(latest.updated_at).getTime()
-        const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000
-        if (updatedAt > twentyFourHoursAgo) {
-          const msgs = await loadConversation(latest.id)
-          if (msgs) setMessages(msgs as typeof messages)
-        }
+  // Load a conversation's messages
+  const handleLoadConversation = useCallback(
+    async (id: string) => {
+      const { loadConversation } = useConversationStore.getState()
+      const msgs = await loadConversation(id)
+      if (msgs) {
+        const converted: ChatMessage[] = (msgs as Array<{ id: string; role: string; parts: Array<{ type: string; text?: string }> }>).map((m) => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          text: m.parts?.filter((p) => p.type === 'text' && p.text).map((p) => p.text).join('') || '',
+        }))
+        setMessages(converted)
       }
-    }
-    autoLoad()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    },
+    []
+  )
 
   // Expose handlers for parent components
   useEffect(() => {
@@ -266,7 +299,7 @@ export function ChatInterface() {
     }
   }, [handleLoadConversation, handleNewChat])
 
-  // Detect when user scrolls up manually (ignore scroll events caused by our auto-scroll)
+  // Detect when user scrolls up manually
   const handleScroll = () => {
     if (isAutoScrolling.current) return
     const el = scrollContainerRef.current
@@ -275,14 +308,13 @@ export function ChatInterface() {
     userScrolledUp.current = distanceFromBottom > 50
   }
 
-  // Auto-scroll only when user hasn't scrolled up
+  // Auto-scroll
   useEffect(() => {
     const el = scrollContainerRef.current
     if (!el) return
     if (!userScrolledUp.current) {
       isAutoScrolling.current = true
       el.scrollTop = el.scrollHeight
-      // Reset flag after browser processes the scroll
       requestAnimationFrame(() => {
         isAutoScrolling.current = false
       })
@@ -296,21 +328,40 @@ export function ChatInterface() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isLoading) return
+    if (!input.trim() || isStreaming || isWaiting) return
+
+    if (!isConnected) {
+      connectToRichard()
+      return
+    }
 
     // Auto-create a conversation if none is active
     if (!activeConversationId) {
-      const newId = await createConversation(profile?.name || null)
-      if (!newId) {
-        console.error('Failed to create conversation in Supabase')
-        // Still allow chatting locally even if Supabase fails
-      }
+      await createConversation(profile?.name || null)
     }
 
     const message = input.trim()
     setInput('')
 
-    await sendMessage({ text: message })
+    // Add user message to chat
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        role: 'user',
+        text: message,
+      },
+    ])
+
+    // Gather injected context files
+    const context = files
+      .filter((f) => injectedFileIds.includes(f.id))
+      .map((f) => ({ name: f.name, content: f.content }))
+
+    // Send to Richard via Clawdbot with context
+    chatSend(message, context.length > 0 ? context : undefined)
+    setIsWaiting(true)
+    setActivity('thinking')
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -341,28 +392,39 @@ export function ChatInterface() {
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto p-4">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center mb-4">
-                <span className="text-3xl">🤖</span>
-              </div>
-              <h2 className="text-xl font-semibold mb-2">Nothing Machine</h2>
-              <p className="text-muted-foreground max-w-md mb-2">
-                The answer to AGI is not more intelligence. It's love.
-              </p>
-              <p className="text-sm text-muted-foreground max-w-md">
-                Drag memory files from the left panel to inject context, configure the soul on the
-                right, and start chatting.
-              </p>
-            </div>
+            <RichardIdeaMode
+              isConnected={isConnected}
+              richardStatus={richardStatus}
+              onReconnect={connect}
+            />
           ) : (
             <>
               {messages.map((message, index) => (
                 <MessageBubble
                   key={message.id}
                   message={message}
-                  isLoading={isLoading && index === messages.length - 1 && message.role === 'assistant'}
+                  isStreaming={isStreaming && index === messages.length - 1 && message.role === 'assistant'}
                 />
               ))}
+              {isWaiting && !isStreaming && (
+                <div className="flex gap-3 py-4 justify-start">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center flex-shrink-0 animate-pulse">
+                    <Bot className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="bg-muted rounded-lg px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-1">
+                        <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        Richard is {activity}...
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
           <div ref={messagesEndRef} />
@@ -371,25 +433,38 @@ export function ChatInterface() {
 
       <div className="border-t border-border p-4">
         <div className="max-w-3xl mx-auto">
+          <div className="flex items-center gap-1.5 mb-2">
+            {isConnected ? (
+              <>
+                <Wifi className="w-3 h-3 text-green-400" />
+                <span className="text-[11px] text-green-400/80">Richard (Clawdbot)</span>
+              </>
+            ) : richardStatus === 'connecting' ? (
+              <>
+                <Loader2 className="w-3 h-3 text-yellow-400 animate-spin" />
+                <span className="text-[11px] text-yellow-400/80">Connecting...</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3 h-3 text-white/30" />
+                <span className="text-[11px] text-white/30">Disconnected</span>
+              </>
+            )}
+          </div>
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message... (Shift+Enter for new line)"
+              placeholder={isConnected ? "Talk to Richard..." : "Waiting for Richard to connect..."}
               className="min-h-[60px] max-h-[200px] resize-none flex-1"
+              disabled={!isConnected}
             />
             <div className="flex flex-col gap-2">
-              {isLoading ? (
-                <Button type="button" size="icon" variant="destructive" onClick={stop}>
-                  <StopCircle className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button type="submit" size="icon" disabled={!input.trim()}>
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
+              <Button type="submit" size="icon" disabled={!input.trim() || !isConnected || isStreaming || isWaiting}>
+                <Send className="h-4 w-4" />
+              </Button>
               {messages.length > 0 && (
                 <Button
                   type="button"
