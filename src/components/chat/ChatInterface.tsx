@@ -4,36 +4,85 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { useConversationStore } from '@/lib/conversation-store'
 import { useProfileStore } from '@/lib/profile-store'
 import { useStore } from '@/lib/store'
-import { useRichard } from '@/lib/useRichard'
-import { onChat as onRichardChat, onActivity as onRichardActivity, connectToRichard } from '@/lib/richard'
+import { useNothingMachineChat } from '@/lib/useChat'
+import { useModelStore, type ModelProvider } from '@/lib/model-store'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { ContextBar } from './ContextBar'
 import { RichardIdeaMode } from './RichardIdeaMode'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
-import { Send, Loader2, Bot, User, Copy, Trash2, Wifi, WifiOff } from 'lucide-react'
+import {
+  Send,
+  Loader2,
+  Bot,
+  User,
+  Copy,
+  Trash2,
+  ChevronDown,
+  Plus,
+  X,
+} from 'lucide-react'
 
-interface ChatMessage {
+// UIMessage part types from AI SDK v6
+interface UIMessagePart {
+  type: 'text' | 'reasoning' | 'tool-invocation' | 'file' | string
+  text?: string
+}
+
+interface UIMessage {
   id: string
-  role: 'user' | 'assistant'
-  text: string
+  role: 'system' | 'user' | 'assistant'
+  parts: UIMessagePart[]
+}
+
+const PROVIDER_LABELS: Record<ModelProvider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  xai: 'xAI',
+  google: 'Google',
 }
 
 function MessageBubble({
   message,
   isStreaming,
 }: {
-  message: ChatMessage
+  message: UIMessage
   isStreaming?: boolean
 }) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
 
+  const getTextContent = (parts: UIMessagePart[]): string => {
+    if (!Array.isArray(parts)) return ''
+    return parts
+      .filter((p) => p.type === 'text' && p.text)
+      .map((p) => p.text)
+      .join('')
+  }
+
+  const textContent = getTextContent(message.parts)
+
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(message.text)
+      await navigator.clipboard.writeText(textContent)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch { /* ignore */ }
@@ -118,16 +167,16 @@ function MessageBubble({
         )}
       >
         <div className="text-sm">
-          {renderContent(message.text)}
-          {isStreaming && isAssistant && !message.text && (
+          {renderContent(textContent)}
+          {isStreaming && isAssistant && !textContent && (
             <Loader2 className="h-4 w-4 animate-spin" />
           )}
-          {isStreaming && isAssistant && message.text && (
+          {isStreaming && isAssistant && textContent && (
             <span className="inline-block w-2 h-4 bg-current animate-pulse ml-1" />
           )}
         </div>
 
-        {isAssistant && !isStreaming && message.text && (
+        {isAssistant && !isStreaming && textContent && (
           <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button variant="ghost" size="icon" className="w-6 h-6" onClick={handleCopy}>
               <Copy className="w-3 h-3" />
@@ -146,107 +195,174 @@ function MessageBubble({
   )
 }
 
+function AddModelDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { addModel } = useModelStore()
+  const [provider, setProvider] = useState<ModelProvider>('openai')
+  const [modelId, setModelId] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [apiKey, setApiKey] = useState('')
+
+  const handleSave = () => {
+    if (!modelId.trim() || !displayName.trim()) return
+    addModel({
+      id: `${provider}-${modelId}-${Date.now()}`,
+      name: displayName.trim(),
+      provider,
+      modelId: modelId.trim(),
+      apiKey: apiKey.trim(),
+    })
+    setProvider('openai')
+    setModelId('')
+    setDisplayName('')
+    setApiKey('')
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Model</DialogTitle>
+          <DialogDescription>Add a new AI model with your API key.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label>Provider</Label>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as ModelProvider)}
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+            >
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+              <option value="xai">xAI</option>
+              <option value="google">Google</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Model ID</Label>
+            <Input
+              placeholder="e.g. gpt-5.4, claude-opus-4-6-20260301"
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Display Name</Label>
+            <Input
+              placeholder="e.g. GPT 5.4"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>API Key</Label>
+            <Input
+              type="password"
+              placeholder="sk-..."
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {provider === 'anthropic' && (
+              <p className="text-xs text-muted-foreground">
+                Leave blank to use the ANTHROPIC_API_KEY env var.
+              </p>
+            )}
+          </div>
+          <Button onClick={handleSave} disabled={!modelId.trim() || !displayName.trim()}>
+            Add Model
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ModelSelector() {
+  const { models, selectedModelId, setSelectedModelId, removeModel } = useModelStore()
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const selectedModel = models.find((m) => m.id === selectedModelId) ?? models[0]
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1 text-xs h-7">
+            {selectedModel?.name ?? 'Select model'}
+            <ChevronDown className="w-3 h-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {models.map((model) => (
+            <DropdownMenuItem
+              key={model.id}
+              onClick={() => setSelectedModelId(model.id)}
+              className="flex items-center justify-between gap-4"
+            >
+              <div className="flex flex-col">
+                <span className={cn(model.id === selectedModelId && 'font-semibold')}>
+                  {model.name}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {PROVIDER_LABELS[model.provider]} &middot; {model.modelId}
+                </span>
+              </div>
+              {model.id !== 'opus-4-6' && model.id !== 'gpt-5-4' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    removeModel(model.id)
+                  }}
+                  className="text-muted-foreground hover:text-destructive p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Model
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AddModelDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
+    </>
+  )
+}
+
 export function ChatInterface() {
   const { activeConversationId, setActiveConversationId, createConversation, saveMessages } =
     useConversationStore()
   const { profile } = useProfileStore()
-  const { isConnected, send: chatSend, status: richardStatus, connect } = useRichard()
-  const { files, injectedFileIds } = useStore()
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const { messages, sendMessage, isLoading, stop, setMessages, status } = useNothingMachineChat()
   const [input, setInput] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [isWaiting, setIsWaiting] = useState(false)
-  const [activity, setActivity] = useState<string>('thinking')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isAutoScrolling = useRef(false)
   const userScrolledUp = useRef(false)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Track the current assistant message being streamed
-  const streamingMsgId = useRef<string | null>(null)
 
   const { setNodeRef, isOver } = useDroppable({
     id: 'chat-dropzone',
   })
 
-  // Auto-connect to Richard on mount
-  useEffect(() => {
-    connectToRichard()
-  }, [])
-
-  // Listen for Richard's chat responses and stream them into messages
-  useEffect(() => {
-    const unsubActivity = onRichardActivity((act) => {
-      if (act !== 'done') {
-        setActivity(act)
-      }
-    })
-
-    const unsub = onRichardChat((text, done) => {
-      if (done && text) {
-        // Final event with full text — replace or create the message with complete text
-        setIsWaiting(false)
-        setMessages((prev) => {
-          if (streamingMsgId.current) {
-            // Replace the streaming message with the final complete text
-            const updated = prev.map((m) =>
-              m.id === streamingMsgId.current ? { ...m, text } : m
-            )
-            streamingMsgId.current = null
-            setIsStreaming(false)
-            return updated
-          }
-          // No streaming message yet — create the full message directly
-          streamingMsgId.current = null
-          setIsStreaming(false)
-          return [
-            ...prev,
-            {
-              id: `richard-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              role: 'assistant' as const,
-              text,
-            },
-          ]
-        })
-      } else if (text && !done) {
-        // Streaming delta — append to current message
-        setIsWaiting(false)
-        setMessages((prev) => {
-          if (streamingMsgId.current) {
-            return prev.map((m) =>
-              m.id === streamingMsgId.current
-                ? { ...m, text: m.text + text }
-                : m
-            )
-          }
-          const id = `richard-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-          streamingMsgId.current = id
-          setIsStreaming(true)
-          return [...prev, { id, role: 'assistant' as const, text }]
-        })
-      } else if (done && !text) {
-        // Done signal with no text
-        streamingMsgId.current = null
-        setIsStreaming(false)
-        setIsWaiting(false)
-      }
-    })
-    return () => {
-      unsub()
-      unsubActivity()
-    }
-  }, [])
-
   // Auto-save messages to Supabase (debounced)
   const debouncedSave = useCallback(
-    (convId: string, msgs: ChatMessage[]) => {
+    (convId: string, msgs: typeof messages) => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
       saveTimeoutRef.current = setTimeout(() => {
         const dbMessages = msgs.map((m) => ({
           id: m.id,
           role: m.role as 'user' | 'assistant' | 'system',
-          parts: [{ type: 'text' as const, text: m.text }],
+          parts: (m.parts as Array<{ type: string; text?: string }>)?.map((p) => ({ type: p.type, text: p.text ?? '' })) ?? [{ type: 'text' as const, text: '' }],
         }))
         saveMessages(convId, dbMessages, profile?.name || null)
       }, 1500)
@@ -256,9 +372,9 @@ export function ChatInterface() {
 
   // Save when messages change and not streaming
   useEffect(() => {
-    if (!activeConversationId || messages.length === 0 || isStreaming) return
+    if (!activeConversationId || messages.length === 0 || isLoading) return
     debouncedSave(activeConversationId, messages)
-  }, [messages, activeConversationId, isStreaming, debouncedSave])
+  }, [messages, activeConversationId, isLoading, debouncedSave])
 
   useEffect(() => {
     return () => {
@@ -270,7 +386,7 @@ export function ChatInterface() {
   const handleNewChat = useCallback(() => {
     setMessages([])
     setActiveConversationId(null)
-  }, [setActiveConversationId])
+  }, [setMessages, setActiveConversationId])
 
   // Load a conversation's messages
   const handleLoadConversation = useCallback(
@@ -278,15 +394,11 @@ export function ChatInterface() {
       const { loadConversation } = useConversationStore.getState()
       const msgs = await loadConversation(id)
       if (msgs) {
-        const converted: ChatMessage[] = (msgs as Array<{ id: string; role: string; parts: Array<{ type: string; text?: string }> }>).map((m) => ({
-          id: m.id,
-          role: m.role as 'user' | 'assistant',
-          text: m.parts?.filter((p) => p.type === 'text' && p.text).map((p) => p.text).join('') || '',
-        }))
-        setMessages(converted)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setMessages(msgs as any)
       }
     },
-    []
+    [setMessages]
   )
 
   // Expose handlers for parent components
@@ -328,12 +440,7 @@ export function ChatInterface() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || isStreaming || isWaiting) return
-
-    if (!isConnected) {
-      connectToRichard()
-      return
-    }
+    if (!input.trim() || isLoading) return
 
     // Auto-create a conversation if none is active
     if (!activeConversationId) {
@@ -343,25 +450,7 @@ export function ChatInterface() {
     const message = input.trim()
     setInput('')
 
-    // Add user message to chat
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        role: 'user',
-        text: message,
-      },
-    ])
-
-    // Gather injected context files
-    const context = files
-      .filter((f) => injectedFileIds.includes(f.id))
-      .map((f) => ({ name: f.name, content: f.content }))
-
-    // Send to Richard via Clawdbot with context
-    chatSend(message, context.length > 0 ? context : undefined)
-    setIsWaiting(true)
-    setActivity('thinking')
+    await sendMessage({ text: message })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -393,9 +482,10 @@ export function ChatInterface() {
         <div className="max-w-3xl mx-auto p-4">
           {messages.length === 0 ? (
             <RichardIdeaMode
-              isConnected={isConnected}
-              richardStatus={richardStatus}
-              onReconnect={connect}
+              isConnected={true}
+              richardStatus="connected"
+              onReconnect={() => {}}
+              showConnectionControls={false}
             />
           ) : (
             <>
@@ -403,28 +493,9 @@ export function ChatInterface() {
                 <MessageBubble
                   key={message.id}
                   message={message}
-                  isStreaming={isStreaming && index === messages.length - 1 && message.role === 'assistant'}
+                  isStreaming={isLoading && index === messages.length - 1 && message.role === 'assistant'}
                 />
               ))}
-              {isWaiting && !isStreaming && (
-                <div className="flex gap-3 py-4 justify-start">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center flex-shrink-0 animate-pulse">
-                    <Bot className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="bg-muted rounded-lg px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-1">
-                        <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        Richard is {activity}...
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </>
           )}
           <div ref={messagesEndRef} />
@@ -433,38 +504,27 @@ export function ChatInterface() {
 
       <div className="border-t border-border p-4">
         <div className="max-w-3xl mx-auto">
-          <div className="flex items-center gap-1.5 mb-2">
-            {isConnected ? (
-              <>
-                <Wifi className="w-3 h-3 text-green-400" />
-                <span className="text-[11px] text-green-400/80">Richard (Clawdbot)</span>
-              </>
-            ) : richardStatus === 'connecting' ? (
-              <>
-                <Loader2 className="w-3 h-3 text-yellow-400 animate-spin" />
-                <span className="text-[11px] text-yellow-400/80">Connecting...</span>
-              </>
-            ) : (
-              <>
-                <WifiOff className="w-3 h-3 text-white/30" />
-                <span className="text-[11px] text-white/30">Disconnected</span>
-              </>
-            )}
+          <div className="flex items-center gap-2 mb-2">
+            <ModelSelector />
           </div>
           <form onSubmit={handleSubmit} className="flex gap-2">
             <Textarea
-              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isConnected ? "Talk to Richard..." : "Waiting for Richard to connect..."}
+              placeholder="Type a message... (Shift+Enter for new line)"
               className="min-h-[60px] max-h-[200px] resize-none flex-1"
-              disabled={!isConnected}
             />
             <div className="flex flex-col gap-2">
-              <Button type="submit" size="icon" disabled={!input.trim() || !isConnected || isStreaming || isWaiting}>
-                <Send className="h-4 w-4" />
-              </Button>
+              {isLoading ? (
+                <Button type="button" size="icon" variant="destructive" onClick={stop}>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                </Button>
+              ) : (
+                <Button type="submit" size="icon" disabled={!input.trim()}>
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
               {messages.length > 0 && (
                 <Button
                   type="button"

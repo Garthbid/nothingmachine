@@ -13,6 +13,7 @@ import {
 import { useStore } from '@/lib/store'
 import { useProfileStore } from '@/lib/profile-store'
 import { useTeamStore } from '@/lib/team-store'
+import { useModelStore } from '@/lib/model-store'
 import { ProfileModal } from '@/components/ProfileModal'
 import { TeamModal } from '@/components/TeamModal'
 import { useRichard } from '@/lib/useRichard'
@@ -21,6 +22,8 @@ export function Header() {
   const { setCurrentView } = useStore()
   const { profile } = useProfileStore()
   const { members } = useTeamStore()
+  const { models, selectedModelId } = useModelStore()
+  const selectedModel = models.find((m) => m.id === selectedModelId) ?? models[0]
   const { status: richardStatus, connect, disconnect, isConnected } = useRichard()
   const [profileOpen, setProfileOpen] = useState(false)
   const [teamOpen, setTeamOpen] = useState(false)

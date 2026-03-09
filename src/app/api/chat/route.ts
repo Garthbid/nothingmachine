@@ -1,5 +1,8 @@
-import { anthropic } from '@ai-sdk/anthropic'
-import { streamText } from 'ai'
+import { createAnthropic } from '@ai-sdk/anthropic'
+import { createOpenAI } from '@ai-sdk/openai'
+import { createXai } from '@ai-sdk/xai'
+import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { streamText, type LanguageModel } from 'ai'
 import { NextRequest } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -29,24 +32,50 @@ function getMessageContent(message: UIMessage): string {
   return ''
 }
 
+function getModel(provider: string, modelId: string, apiKey: string): LanguageModel {
+  switch (provider) {
+    case 'anthropic': {
+      const key = apiKey || process.env.ANTHROPIC_API_KEY
+      if (!key) throw new Error('No API key for Anthropic. Set ANTHROPIC_API_KEY or provide one in model settings.')
+      return createAnthropic({ apiKey: key })(modelId)
+    }
+    case 'openai': {
+      const key = apiKey || process.env.OPENAI_API_KEY
+      if (!key) throw new Error('No API key for OpenAI. Provide one in model settings.')
+      return createOpenAI({ apiKey: key })(modelId)
+    }
+    case 'xai': {
+      const key = apiKey || process.env.XAI_API_KEY
+      if (!key) throw new Error('No API key for xAI. Provide one in model settings.')
+      return createXai({ apiKey: key })(modelId)
+    }
+    case 'google': {
+      const key = apiKey || process.env.GOOGLE_GENERATIVE_AI_API_KEY
+      if (!key) throw new Error('No API key for Google. Provide one in model settings.')
+      return createGoogleGenerativeAI({ apiKey: key })(modelId)
+    }
+    default:
+      throw new Error(`Unknown provider: ${provider}`)
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const messages: UIMessage[] = body.messages || []
     const systemPrompt: string = body.systemPrompt || 'You are a helpful AI assistant running on the Nothing Machine.'
+    const provider: string = body.provider || 'anthropic'
+    const modelId: string = body.modelId || 'claude-opus-4-6-20260301'
+    const apiKey: string = body.apiKey || ''
 
-    console.log('=== API REQUEST ===')
-    console.log('body keys:', Object.keys(body))
-    console.log('has systemPrompt:', 'systemPrompt' in body)
-    console.log('systemPrompt type:', typeof body.systemPrompt)
-    console.log('systemPrompt length:', systemPrompt.length)
-    console.log('systemPrompt preview:', systemPrompt.substring(0, 200))
-
-    if (!process.env.ANTHROPIC_API_KEY) {
-      const demoMessage = "I'm running in demo mode — no Anthropic API key configured. Add ANTHROPIC_API_KEY to .env.local and restart."
-      const escapedMessage = JSON.stringify(demoMessage)
+    let model: LanguageModel
+    try {
+      model = getModel(provider, modelId, apiKey)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to initialize model'
+      const msg = JSON.stringify(`Error: ${message}`)
       return new Response(
-        'data: {"type":"text-delta","textDelta":' + escapedMessage + '}\ndata: [DONE]\n',
+        'data: {"type":"text-delta","textDelta":' + msg + '}\ndata: [DONE]\n',
         {
           headers: {
             'Content-Type': 'text/event-stream',
@@ -58,7 +87,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = streamText({
-      model: anthropic('claude-sonnet-4-5-20250929'),
+      model,
       system: systemPrompt,
       messages: messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')

@@ -1,5 +1,5 @@
 const GATEWAY_URL = 'wss://richard.tailb619d4.ts.net'
-const GATEWAY_TOKEN = 'a167b2ef128da56c280b0d049d3e9340347b788e369dda6e'
+const GATEWAY_TOKEN = 'richard'
 
 export type RichardMessage = {
   type: string
@@ -102,7 +102,7 @@ export function connectToRichard() {
 
   intentionalDisconnect = false
   setStatus('connecting')
-  ws = new WebSocket(`${GATEWAY_URL}?token=${GATEWAY_TOKEN}`)
+  ws = new WebSocket(GATEWAY_URL)
 
   ws.onopen = () => {
     console.log('WebSocket open, awaiting challenge...')
@@ -134,7 +134,7 @@ export function connectToRichard() {
               caps: [],
               commands: [],
               permissions: {},
-              auth: { token: GATEWAY_TOKEN },
+              auth: { password: GATEWAY_TOKEN },
               locale: 'en-US',
               userAgent: 'nothingmachine/1.0.0',
             },

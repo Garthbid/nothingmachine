@@ -6,6 +6,7 @@ import { useStore } from './store'
 import { useEditorStore } from './editor-store'
 import { useProfileStore } from './profile-store'
 import { useTeamStore } from './team-store'
+import { useModelStore } from './model-store'
 import { IDENTITY_FIELDS } from './identity-fields'
 
 function buildSystemPrompt(
@@ -125,7 +126,15 @@ const transport = new DefaultChatTransport({
       systemPrompt += `\n\n---\n\n## Team Members\n${memberList}\nThese are the other people on the team. Be aware of them when relevant.`
     }
 
-    return { systemPrompt }
+    const { models, selectedModelId } = useModelStore.getState()
+    const selectedModel = models.find((m) => m.id === selectedModelId) ?? models[0]
+
+    return {
+      systemPrompt,
+      modelId: selectedModel.modelId,
+      provider: selectedModel.provider,
+      apiKey: selectedModel.apiKey,
+    }
   },
 })
 
