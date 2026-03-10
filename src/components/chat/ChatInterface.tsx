@@ -480,24 +480,19 @@ export function ChatInterface() {
 
       <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto p-4">
-          {messages.length === 0 ? (
-            <RichardIdeaMode
-              isConnected={true}
-              richardStatus="connected"
-              onReconnect={() => {}}
-              showConnectionControls={false}
+          <RichardIdeaMode
+            isConnected={true}
+            richardStatus="connected"
+            onReconnect={() => {}}
+            showConnectionControls={false}
+          />
+          {messages.map((message, index) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              isStreaming={isLoading && index === messages.length - 1 && message.role === 'assistant'}
             />
-          ) : (
-            <>
-              {messages.map((message, index) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  isStreaming={isLoading && index === messages.length - 1 && message.role === 'assistant'}
-                />
-              ))}
-            </>
-          )}
+          ))}
           <div ref={messagesEndRef} />
         </div>
       </div>

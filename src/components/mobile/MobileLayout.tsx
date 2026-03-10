@@ -266,15 +266,14 @@ export function MobileLayout() {
               className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y"
               style={{ WebkitOverflowScrolling: 'touch' }}
             >
-              {messages.length === 0 ? (
-                <RichardIdeaMode
-                  isConnected={false}
-                  richardStatus="disconnected"
-                  onReconnect={handleMobileReconnect}
-                  mode="mobile"
-                  showConnectionControls={false}
-                />
-              ) : (
+              <RichardIdeaMode
+                isConnected={false}
+                richardStatus="disconnected"
+                onReconnect={handleMobileReconnect}
+                mode="mobile"
+                showConnectionControls={false}
+              />
+              {messages.length > 0 && (
                 <div className="px-4 py-4 space-y-4">
                   {messages.map((msg) => {
                     const isUser = msg.role === 'user'

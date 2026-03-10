@@ -101,7 +101,16 @@ export default function Home() {
 
   if (!mounted) {
     return (
-      <div className="h-screen flex flex-col bg-[#0a0a0a] text-white">
+      <div
+        className="h-screen flex flex-col text-white"
+        style={{
+          background: `
+            radial-gradient(ellipse at 20% 0%, rgba(168,85,247,0.04) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 100%, rgba(52,211,153,0.03) 0%, transparent 50%),
+            #0a0a0a
+          `,
+        }}
+      >
         <Header />
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-pulse text-white/40">Loading...</div>
@@ -116,7 +125,16 @@ export default function Home() {
       <MobileLayout />
 
       {/* Desktop Layout */}
-      <div className="hidden md:flex h-screen flex-col bg-[#0a0a0a] text-white pt-16">
+      <div
+        className="hidden md:flex h-screen flex-col text-white pt-16"
+        style={{
+          background: `
+            radial-gradient(ellipse at 20% 0%, rgba(168,85,247,0.04) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 100%, rgba(52,211,153,0.03) 0%, transparent 50%),
+            #0a0a0a
+          `,
+        }}
+      >
         <Header />
 
         {currentView === 'home' ? (
